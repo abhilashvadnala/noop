@@ -163,15 +163,17 @@ import WhoopStore
             boundaries.append(item.boundary); wakeDayById[item.boundary.sleepId] = item.wakeDay
             ownerById[item.boundary.sleepId] = item.owner; sleepContexts.append(item.sleepContext)
         }
-        if let latest = boundaries.max(by: { $0.onset < $1.onset }),
-           let day = wakeDayById[latest.sleepId], let owner = ownerById[latest.sleepId] {
-            let active = DayCycleResolver.activeWindow(mode: mode,
-                latestSleep: DayCycleWindow(id: latest.sleepId, startInclusive: latest.onset,
-                    endExclusive: now, displayDay: day, source: .detectedSleep), now: now,
-                offsetSec: offsetSec)
-            if active.source == .syntheticMidnight {
-                boundaries.append(.init(sleepId: active.id, onset: active.startInclusive))
-                wakeDayById[active.id] = active.displayDay; ownerById[active.id] = owner
+        // Close any historical (or open-tail) gap that reaches the absolute max at local midnight —
+        // the same fallback Settings promises for missing sleep. Previously only the latest window
+        // was capped, so a skipped main-night left a 48 h window that swallowed the middle wake day.
+        // Refs #2626.
+        boundaries = DayCycleResolver.boundariesClosingLongGaps(boundaries, now: now, offsetSec: offsetSec)
+        var lastOwner: String?
+        for boundary in boundaries.sorted(by: { $0.onset < $1.onset }) {
+            if let owner = ownerById[boundary.sleepId] { lastOwner = owner }
+            if wakeDayById[boundary.sleepId] == nil, boundary.sleepId.hasPrefix("synthetic:") {
+                wakeDayById[boundary.sleepId] = AnalyticsEngine.dayString(boundary.onset, offsetSec: offsetSec)
+                if let lastOwner { ownerById[boundary.sleepId] = lastOwner }
             }
         }
 

@@ -82,4 +82,42 @@ object DayCycleResolver {
             source = DayCycleWindow.Source.SYNTHETIC_MIDNIGHT,
         )
     }
+
+    /**
+     * Insert local-midnight boundaries wherever a gap between consecutive sleep boundaries (or the
+     * open tail to [now]) reaches [ABSOLUTE_MAX_OPEN_SECONDS]. Settings copy promises "missing sleep
+     * falls back to local midnight"; without this, a skipped main-night classification left the
+     * previous window spanning two wake days and swallowed the middle day's steps/Effort/calories.
+     * Swift twin: `DayCycleResolver.boundariesClosingLongGaps`. Refs #2626.
+     */
+    fun boundariesClosingLongGaps(
+        boundaries: List<PhysiologicalSteps.CycleBoundary>,
+        now: Long,
+        tzOffsetSeconds: Long,
+    ): List<PhysiologicalSteps.CycleBoundary> {
+        val ordered = boundaries.asSequence()
+            .filter { it.onset <= now }
+            .distinctBy { it.sleepId }
+            .sortedBy { it.onset }
+            .toList()
+        if (ordered.isEmpty()) return emptyList()
+        val seen = ordered.mapTo(HashSet()) { it.sleepId }
+        val result = ArrayList<PhysiologicalSteps.CycleBoundary>()
+        for (index in ordered.indices) {
+            val boundary = ordered[index]
+            result += boundary
+            val nextOnset = ordered.getOrNull(index + 1)?.onset ?: now
+            var cursor = boundary.onset
+            while (nextOnset - cursor >= ABSOLUTE_MAX_OPEN_SECONDS) {
+                val midnight = fallbackMidnightAfter(cursor, tzOffsetSeconds)
+                if (midnight <= cursor || midnight >= nextOnset) break
+                val day = AnalyticsEngine.dayString(midnight, tzOffsetSeconds)
+                val synthetic = PhysiologicalSteps.CycleBoundary("synthetic:$day", midnight)
+                if (!seen.add(synthetic.sleepId)) break
+                result += synthetic
+                cursor = midnight
+            }
+        }
+        return result
+    }
 }

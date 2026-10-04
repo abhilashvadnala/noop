@@ -42,6 +42,12 @@ public enum PhysiologicalSteps {
     private static let minMainSleepSeconds = 3 * 3_600
 
     /// Kotlin twin: `PhysiologicalSteps.classifyForCycle`.
+    ///
+    /// Picks the cycle-opening main night with the same scored selector the Sleep surfaces use
+    /// (`mainNightGroupIndices`), after dropping nap-shaped groups under three hours. Overnight onset
+    /// is preferred when any such group exists — so a long afternoon nap cannot hide a shorter valid
+    /// night — but it is not a hard gate: an early bedtime (before 20:00) that is the day's only
+    /// ≥3 h sleep still opens the cycle. Refs #2626.
     public static func classifyForCycle(_ blocks: [SleepBlock], offsetSec: Int,
                                         habitualMidsleepSec: Int?) -> [SleepBlock] {
         guard !blocks.isEmpty else { return [] }
@@ -53,15 +59,19 @@ public enum PhysiologicalSteps {
         } else {
             let nightBlocks = selectable.map { SleepStageTotals.NightBlock(start: blocks[$0].effectiveOnset,
                                                                             end: blocks[$0].end) }
-            let eligible = SleepStageTotals.bridgedNightGroups(nightBlocks, offsetSec: offsetSec)
+            let longEnough = SleepStageTotals.bridgedNightGroups(nightBlocks, offsetSec: offsetSec)
                 .filter { group in
                     let total = group.indices.reduce(0) { $0 + max(0, nightBlocks[$1].durationS) }
-                    let onset = group.indices.map { nightBlocks[$0].start }.min()
-                    return total >= minMainSleepSeconds && onset.map {
-                        SleepStageTotals.isOvernightOnset($0, offsetSec: offsetSec)
-                    } == true
+                    return total >= minMainSleepSeconds
                 }
-                .flatMap { $0.indices }
+            // Prefer overnight-onset groups when any qualify, otherwise accept the early-bedtime /
+            // shift-work long sleep the Sleep selector already treats as main. Refs #2626.
+            let overnight = longEnough.filter { group in
+                group.indices.map { nightBlocks[$0].start }.min().map {
+                    SleepStageTotals.isOvernightOnset($0, offsetSec: offsetSec)
+                } == true
+            }
+            let eligible = (overnight.isEmpty ? longEnough : overnight).flatMap { $0.indices }
             let candidates = eligible.map { index in
                 SleepStageTotals.NightBlock(start: blocks[selectable[index]].effectiveOnset,
                                             end: blocks[selectable[index]].end)
