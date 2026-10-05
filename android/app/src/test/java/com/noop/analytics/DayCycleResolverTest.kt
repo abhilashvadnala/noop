@@ -67,4 +67,35 @@ class DayCycleResolverTest {
             DayCycleResolver.activeWindow(DayCycleMode.MIDNIGHT, sleep, 2 * 86_400L + 60, 0).source,
         )
     }
+
+    /**
+     * Refs #2626: when a main night is missing between two that have one, the gap (≥40 h) must close
+     * at local midnight so the previous window does not swallow the middle wake day.
+     */
+    @Test fun longGapBetweenMainNightsInsertsSyntheticMidnight() {
+        val nightA = PhysiologicalSteps.CycleBoundary("night-a", 20 * 3_600L) // day-1 20:00
+        val nightC = PhysiologicalSteps.CycleBoundary("night-c", nightA.onset + 2 * 86_400L) // +48 h
+        val closed = DayCycleResolver.boundariesClosingLongGaps(
+            listOf(nightA, nightC),
+            now = nightC.onset + 12 * 3_600L,
+            tzOffsetSeconds = 0,
+        )
+        val synthetic = closed.filter { it.sleepId.startsWith("synthetic:") }
+        assertEquals(1, synthetic.size)
+        assertEquals(DayCycleResolver.fallbackMidnightAfter(nightA.onset, 0), synthetic.single().onset)
+        val windows = PhysiologicalSteps.cycleWindows(closed, now = nightC.onset + 12 * 3_600L)
+        // night-a closes at the synthetic midnight (~26–48 h), not at night-c 48 h later.
+        val windowA = windows.first { it.sleepId == "night-a" }
+        assertEquals(synthetic.single().onset, windowA.endExclusive)
+        assertEquals(true, windowA.endExclusive - windowA.onset < DayCycleResolver.ABSOLUTE_MAX_OPEN_SECONDS)
+    }
+
+    @Test fun openTailPastAbsoluteCapStillInsertsSyntheticMidnight() {
+        val night = PhysiologicalSteps.CycleBoundary("night", 0L)
+        val now = 48 * 3_600L
+        val closed = DayCycleResolver.boundariesClosingLongGaps(listOf(night), now = now, tzOffsetSeconds = 0)
+        assertEquals(true, closed.any { it.sleepId.startsWith("synthetic:") })
+        val windows = PhysiologicalSteps.cycleWindows(closed, now)
+        assertEquals(true, windows.all { it.endExclusive - it.onset < DayCycleResolver.ABSOLUTE_MAX_OPEN_SECONDS })
+    }
 }

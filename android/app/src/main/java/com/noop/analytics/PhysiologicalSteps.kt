@@ -40,8 +40,11 @@ object PhysiologicalSteps {
 
 
     /**
-     * Apply the same user-visible main-vs-nap shape used by the sleep surfaces: only the canonical overnight
-     * group can be MAIN, it must total at least three hours, and every other/twinless-explicit block is NAP.
+     * Apply the same user-visible main-vs-nap shape used by the sleep surfaces: the scored
+     * [SleepStageTotals.mainNightGroupIndices] pick among groups that total at least three hours,
+     * preferring an overnight-onset group when any exist so a long afternoon nap cannot hide a shorter
+     * valid night. Overnight onset is not a hard gate — an early bedtime (before 20:00) that is the
+     * day's only ≥3 h sleep still opens the cycle. Refs #2626.
      */
     fun classifyForCycle(
         blocks: List<SleepBlock>,
@@ -58,15 +61,19 @@ object PhysiologicalSteps {
                 val b = blocks[it]
                 SleepStageTotals.NightBlock(b.effectiveOnset, b.end)
             }
-            // Eliminate nap-shaped GROUPS before choosing a winner. Otherwise a six-hour afternoon nap can
-            // win the generic duration scorer, fail the daytime guard, and hide a valid shorter night.
-            val eligible = SleepStageTotals.bridgedNightGroups(selectableNightBlocks, tzOffsetSeconds)
+            // Eliminate nap-shaped GROUPS under three hours before choosing a winner. Prefer overnight
+            // onset when any such group qualifies; otherwise accept the early-bedtime / shift-work long
+            // sleep the Sleep selector already treats as main. Refs #2626.
+            val longEnough = SleepStageTotals.bridgedNightGroups(selectableNightBlocks, tzOffsetSeconds)
                 .filter { group ->
                     val total = group.indices.sumOf { i -> selectableNightBlocks[i].durationS.coerceAtLeast(0L) }
-                    val onset = group.indices.minOfOrNull { selectableNightBlocks[it].start }
-                    total >= MIN_MAIN_SLEEP_SECONDS && onset != null &&
-                        SleepStageTotals.isOvernightOnset(onset, tzOffsetSeconds)
+                    total >= MIN_MAIN_SLEEP_SECONDS
                 }
+            val overnight = longEnough.filter { group ->
+                val onset = group.indices.minOfOrNull { selectableNightBlocks[it].start }
+                onset != null && SleepStageTotals.isOvernightOnset(onset, tzOffsetSeconds)
+            }
+            val eligible = (if (overnight.isEmpty()) longEnough else overnight)
                 .flatMap { it.indices }
                 .distinct()
             SleepStageTotals.mainNightGroupIndices(

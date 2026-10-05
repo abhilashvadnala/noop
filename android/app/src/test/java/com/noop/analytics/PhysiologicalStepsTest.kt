@@ -90,6 +90,38 @@ class PhysiologicalStepsTest {
         assertEquals(PhysiologicalSteps.SleepKind.NAP, classified["nap"])
     }
 
+    /**
+     * Refs #2626: a night that starts before the 20:00 overnight band (e.g. 19:45) is still the
+     * Sleep screen's main night, and must open the physiological day cycle. The hard overnight onset
+     * gate previously demoted it to NAP, so steps/Effort/calories swallowed the next wake day.
+     */
+    @Test fun earlyBedtimeBeforeOvernightBandStillOpensTheCycle() {
+        fun utc(day: Int, hour: Int, minute: Int = 0) =
+            LocalDateTime.of(2026, 9, day, hour, minute).toEpochSecond(ZoneOffset.UTC)
+        val classified = PhysiologicalSteps.classifyForCycle(
+            listOf(PhysiologicalSteps.SleepBlock(utc(22, 19, 45), utc(23, 4, 15), id = "early")),
+            tzOffsetSeconds = 0,
+            habitualMidsleepSec = null,
+        )
+        assertEquals(PhysiologicalSteps.SleepKind.MAIN_SLEEP, classified.single().kind)
+        assertEquals(
+            utc(22, 19, 45),
+            PhysiologicalSteps.mainSleepOnset(classified, tzOffsetSeconds = 0, habitualMidsleepSec = null),
+        )
+    }
+
+    /** Same as above at 19:00 — still outside [20:00, 11:00), still a real overnight sleep. */
+    @Test fun nineteenHundredOnsetStillOpensTheCycle() {
+        fun utc(day: Int, hour: Int, minute: Int = 0) =
+            LocalDateTime.of(2026, 9, day, hour, minute).toEpochSecond(ZoneOffset.UTC)
+        val classified = PhysiologicalSteps.classifyForCycle(
+            listOf(PhysiologicalSteps.SleepBlock(utc(22, 19), utc(23, 3, 45), id = "early")),
+            0,
+            null,
+        )
+        assertEquals(PhysiologicalSteps.SleepKind.MAIN_SLEEP, classified.single().kind)
+    }
+
     @Test fun historicalWindowsHaveOnlySleepBoundariesAndKeepTheLastOneOpen() {
         assertEquals(
             listOf(

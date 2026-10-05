@@ -67,4 +67,37 @@ public enum DayCycleResolver {
         return DayCycleWindow(id: latestSleep.id, startInclusive: latestSleep.startInclusive,
                               endExclusive: now, displayDay: latestSleep.displayDay, source: latestSleep.source)
     }
+
+    /// Insert local-midnight boundaries wherever a gap between consecutive sleep boundaries (or the
+    /// open tail to `now`) reaches `absoluteMaxOpenSeconds`. Settings copy promises "missing sleep
+    /// falls back to local midnight"; without this, a skipped main-night classification left the
+    /// previous window spanning two wake days and swallowed the middle day's steps/Effort/calories.
+    /// Kotlin twin: `DayCycleResolver.boundariesClosingLongGaps`. Refs #2626.
+    public static func boundariesClosingLongGaps(
+        _ boundaries: [PhysiologicalSteps.CycleBoundary], now: Int, offsetSec: Int
+    ) -> [PhysiologicalSteps.CycleBoundary] {
+        var seen = Set<String>()
+        let ordered = boundaries
+            .filter { $0.onset <= now && seen.insert($0.sleepId).inserted }
+            .sorted { $0.onset < $1.onset }
+        guard !ordered.isEmpty else { return [] }
+        var result: [PhysiologicalSteps.CycleBoundary] = []
+        for index in ordered.indices {
+            let boundary = ordered[index]
+            result.append(boundary)
+            let nextOnset = index + 1 < ordered.count ? ordered[index + 1].onset : now
+            var cursor = boundary.onset
+            while nextOnset - cursor >= absoluteMaxOpenSeconds {
+                let midnight = fallbackMidnight(after: cursor, offsetSec: offsetSec)
+                guard midnight > cursor, midnight < nextOnset else { break }
+                let day = AnalyticsEngine.dayString(midnight, offsetSec: offsetSec)
+                let synthetic = PhysiologicalSteps.CycleBoundary(sleepId: "synthetic:\(day)", onset: midnight)
+                // A duplicate synthetic id (same local day) would collapse in cycleWindows; advance past it.
+                guard seen.insert(synthetic.sleepId).inserted else { break }
+                result.append(synthetic)
+                cursor = midnight
+            }
+        }
+        return result
+    }
 }

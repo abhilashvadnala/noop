@@ -173,31 +173,20 @@ internal object PhysiologicalStepCycleEngine {
             }
         }
 
-        // Resolve the open tail through the shared day-cycle policy. Step storage proves strap coverage,
-        // not wakefulness: a missed sleep detection has the same endpoints. Until a dedicated, validated
-        // awake signal exists, unknown therefore takes the safe midnight fallback.
-        boundaries.maxByOrNull { it.onset }?.let { latest ->
-            val wakeDay = dayBySleepId[latest.sleepId]
-            val owner = ownerBySleepId[latest.sleepId]
-            if (wakeDay != null && owner != null) {
-                val active = DayCycleResolver.activeWindow(
-                    mode = dayCycleMode,
-                    latestSleep = DayCycleWindow(
-                        id = latest.sleepId,
-                        startInclusive = latest.onset,
-                        endExclusive = nowSeconds,
-                        displayDay = wakeDay,
-                        source = DayCycleWindow.Source.DETECTED_SLEEP,
-                    ),
-                    now = nowSeconds,
-                    tzOffsetSeconds = tzOffsetSeconds,
-                )
-                if (active.source == DayCycleWindow.Source.SYNTHETIC_MIDNIGHT) {
-                    val synthetic = PhysiologicalSteps.CycleBoundary(active.id, active.startInclusive)
-                    boundaries += synthetic
-                    dayBySleepId[synthetic.sleepId] = active.displayDay
-                    ownerBySleepId[synthetic.sleepId] = owner
-                }
+        // Close any historical (or open-tail) gap that reaches the absolute max at local midnight —
+        // the same fallback Settings promises for missing sleep. Previously only the latest window
+        // was capped, so a skipped main-night left a 48 h window that swallowed the middle wake day.
+        // Refs #2626.
+        val closedBoundaries = DayCycleResolver.boundariesClosingLongGaps(
+            boundaries, nowSeconds, tzOffsetSeconds,
+        )
+        var lastOwner: String? = null
+        for (boundary in closedBoundaries.sortedBy { it.onset }) {
+            ownerBySleepId[boundary.sleepId]?.let { lastOwner = it }
+            if (boundary.sleepId !in dayBySleepId && boundary.sleepId.startsWith("synthetic:")) {
+                dayBySleepId[boundary.sleepId] =
+                    AnalyticsEngine.dayString(boundary.onset, tzOffsetSeconds)
+                lastOwner?.let { ownerBySleepId[boundary.sleepId] = it }
             }
         }
 
@@ -205,7 +194,7 @@ internal object PhysiologicalStepCycleEngine {
         val strainByWakeDay = HashMap<String, Double>()
         val caloriesByWakeDay = HashMap<String, Double>()
         val workoutCountByWakeDay = HashMap<String, Int>()
-        val windows = PhysiologicalSteps.cycleWindows(boundaries, nowSeconds)
+        val windows = PhysiologicalSteps.cycleWindows(closedBoundaries, nowSeconds)
         val allDetectedSleep = sleepContext.distinctBy { it.start to it.end }
         cache.keys.retainAll(windows.mapTo(HashSet()) { it.sleepId })
         loadCache.keys.retainAll(windows.mapTo(HashSet()) { it.sleepId })
