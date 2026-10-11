@@ -379,7 +379,7 @@ internal fun vitalHistorySpanDays(points: List<Pair<String, Double>>): Long {
     return (last.toEpochDay() - first.toEpochDay()).coerceAtLeast(0L)
 }
 
-/** #943 (ryanbr): which range chips have anything NEW to show. filterVitalPoints windows off the
+/** #943 (ryanbr): which range chips have anything NEW to show. filterVitalReadings windows off the
  *  LATEST reading, so with under a week of history every window returned the identical full point set
  *  and all six chips drew the same line (a week of data stretched full-width under a "1Y" label). A
  *  range only differs from its predecessor once the data span EXCEEDS the predecessor's window, so the
@@ -417,24 +417,8 @@ internal fun unlockedVitalRanges(spanDays: Long): List<VitalDetailRange> {
     return unlocked
 }
 
-internal fun filterVitalPoints(
-    points: List<Pair<String, Double>>,
-    range: VitalDetailRange,
-): List<Pair<String, Double>> {
-    val windowDays = range.days ?: return points
-    val latestDate = points.lastOrNull()?.first?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-        ?: return points.takeLast(windowDays.toInt())
-    val cutoff = latestDate.minusDays(windowDays - 1)
-    val filtered = points.filter { (day, _) ->
-        runCatching { LocalDate.parse(day) }.getOrNull()?.let { !it.isBefore(cutoff) } ?: false
-    }
-    return filtered.ifEmpty { points.takeLast(windowDays.toInt()) }
-}
-
-/** [filterVitalPoints] for the source-carrying [VitalReading] list — the SAME latest-relative window, so
- *  the readings table and the chart always agree on which readings are in view (task #8). Kept as a twin
- *  of the point filter (identical windowing) rather than shared-generic to preserve the pinned-test shape
- *  of [filterVitalPoints]. */
+/** Latest-relative window used by the vital chart, reading count, and source-carrying table.
+ * Unparseable latest dates fall back to the last window-sized set of readings. */
 internal fun filterVitalReadings(
     readings: List<VitalReading>,
     range: VitalDetailRange,

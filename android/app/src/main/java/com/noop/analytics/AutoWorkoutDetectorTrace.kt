@@ -120,7 +120,20 @@ object AutoWorkoutDetectorTrace {
         val motion = if (hasMotion) AutoWorkoutDetector.motionIntensityByTs(gravity) else emptyMap()
         for ((start, end) in merged) {
             val durMin = ((end - start) / 60L).toInt()
-            if (savedWorkouts.any { AutoWorkoutDetector.overlaps(start, end, it.first, it.second) }) {
+            val overlapping = savedWorkouts.filter {
+                AutoWorkoutDetector.overlaps(start, end, it.first, it.second)
+            }.sortedWith(compareBy<Pair<Long, Long>> { it.first }.thenBy { it.second })
+            if (overlapping.isNotEmpty()) {
+                // #2527: exact saved/candidate ratio, plus intersection seconds for partial overlaps.
+                // Endpoint contact still suppresses today; report its zero intersection without changing
+                // the policy. Canonical ordering keeps evidence independent of database iteration order.
+                val candidateSec = end - start
+                for (saved in overlapping) {
+                    val savedSec = maxOf(0L, saved.second - saved.first)
+                    val overlapSec = maxOf(0L, minOf(end, saved.second) - maxOf(start, saved.first))
+                    lines.add("autoDetect savedOverlap candidateSec=$candidateSec savedSec=$savedSec " +
+                        "overlapSec=$overlapSec savedToCandidate=$savedSec/$candidateSec")
+                }
                 lines.add("autoDetect window durMin=$durMin verdict=dropped why=overlapsSavedWorkout")
                 continue
             }

@@ -18,10 +18,10 @@ import kotlinx.coroutines.withContext
  * and putting three reads of that size on a repeating cadence is precisely the pattern this codebase
  * has had to unpick before (the analyze-pass storm, and the 21-night re-score behind it).
  *
- * So nothing is read until [WhoopRepository.hrFingerprintWindow] says today's heart rate actually
- * moved. That fingerprint is a COUNT and a MAX over an indexed column: no rows, no decode. On an idle
- * tick, which is almost every tick, this costs one cheap query and returns the previous curve. Stress
- * is scored hourly, so even a busy day recomputes about as often as it has new hours.
+ * So nothing is read until [WhoopRepository.hrUnionFingerprint] says today's heart rate actually
+ * moved. That fingerprint is a COUNT and a MAX per source over indexed columns: no rows, no decode.
+ * On an idle tick, which is almost every tick, this costs only those aggregates and returns the previous
+ * curve. Stress is scored hourly, so even a busy day recomputes about as often as it has new hours.
  *
  * SCORING MODE. Background callers keep the DayRelative default: resolving the personal lens reads
  * trailing days of heart rate, a cost a foreground screen can afford and an unprompted tick cannot.
@@ -44,7 +44,7 @@ internal object StressWidgetProducer {
      *  scored against. Only the view model calls this today, so that is a narrow window, but an
      *  immutable holder closes it for free and survives a second caller being added later. */
     private data class Memo(
-        val fingerprint: Pair<Int, Long>,
+        val fingerprint: String,
         val day: Long,
         val personalBaseline: Boolean,
         val points: List<StressPoint>,
@@ -162,9 +162,12 @@ internal object StressWidgetProducer {
             val day = window.day.toEpochDay()
             val from = window.fromEpochSecond
 
-            val fingerprint = repo.hrFingerprintWindow(deviceId, from, nowSeconds)
-            // Same day, same heart rate: nothing can have changed the score, so nothing is read. The day
-            // is part of the check because a fingerprint that happens to match across midnight would
+            val fingerprint = repo.hrUnionFingerprint(deviceId, from, nowSeconds)
+            // Fingerprint the same source union that hrSamplesUnion reads: a backfill under an archived
+            // strap or canonical import must invalidate the curve even when the active strap is idle.
+            // The source ids are part of the witness, so switching active sources cannot replay a
+            // curve whose active-first precedence differs. The day is part of the check because a
+            // fingerprint that happens to match across midnight would
             // otherwise serve yesterday's curve as today's.
             // The foreground personal lens and the background widget can call this producer in either
             // order. The preference is part of the identity so one surface can never receive the other

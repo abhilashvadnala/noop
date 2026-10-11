@@ -26,7 +26,7 @@ object AppChangelog {
      * Bump this when you add a release below. The "What's New" sheet shows automatically when the
      * stored last-seen version is behind this. (Decoupled from the bundle version on purpose.)
      */
-    const val CURRENT_VERSION = "11.8.0"
+    const val CURRENT_VERSION = "12.0.0"
 
     data class Release(
         val version: String,
@@ -37,6 +37,25 @@ object AppChangelog {
 
     /** Newest first. */
     val releases: List<Release> = listOf(
+        Release(
+            version = "12.0.0",
+            title = uiString(R.string.l10n_app_changelog_today_your_way_heart_rate_any_5e1308b3),
+            date = "October 2026",
+            items = listOf(
+                "**Today the way you want it (#2311, #2320, #2410, #2374, #2421, thanks @andigandhi and @mailingjash).** Today can draw its gauges as rings or as the liquid vessels, on Android and on Apple, and the choice is yours per device. The hero ring draws flat rather than through a bloom stand-in, its label sits centred on the ring, the active strap's own battery appears in the Liquid header, and Reduce Motion is honoured throughout. Nothing redraws while nothing moves (#2444, thanks @UtkuDenizAltiok).",
+                "**Your strap's heart rate, in any app (#2400, thanks @don86nl).** WHOOP 4.0 can broadcast heart rate over the standard Bluetooth profile, so another app on your phone can read it live. The Today row says Partly rather than Yes, because a 4.0 offers the broadcast and not the rest.",
+                "**Daytime stress measured against you (#2125, #2432, #2452, #2450, #2504, #2430, #2431, thanks @bartmuskala and @kavemang).** A personal daytime lens, resolved once a day instead of once per screen and anchored to real local days. The line ramps down the chart rather than across the day, hours masked by activity say why, and Today honours the same baseline the detail screen does. Opt-in, and off until you ask for it.",
+                "**ECG on WHOOP MG.** The R17 layout, its wrist values and its START list are corrected, Android drives the turn-on probe Apple already had, an in-flight offload is cleared before a realtime trace is requested, and the capture-may-be-running latch survives an app restart and reaches the Devices card.",
+                "**Italian, and Russian that counts properly (#2454).** NOOP speaks Italian. Russian now carries grammatical plurals across the app, the Watch complications and the Apple catalogues, so counts read correctly rather than always taking one form. Eight mistranslated Android strings are corrected, and the copy a widened scanner surfaced is localised.",
+                "**A Deep Timeline you can actually read (#2368, #2382, thanks @andigandhi).** X-axis labels and per-minute zoom ticks on Android and on iOS and macOS, and the zoom and pan no longer snap back where they were released.",
+                "**Sleep that reports what it used (#2576, #2550, #2372, thanks @UtkuDenizAltiok and @kavemang).** The deep base prior is lowered to 0.15 on PSG evidence, scored subject by subject rather than in aggregate. The hypnogram read-out matches its own rows in order and in value, stage rows align with chart depth, and two device sources recording the same night are collapsed into one.",
+                "**An Oura ring that keeps its place (#2442, #2457, #2455, #2412, #2564, #2624, #2433, #2443, thanks @pipiche38).** A sleep-window stash survives a reconnect, an interrupted drain banks its resume cursor so the next connect does not store again what it already holds, a night the drain served twice is readable, the hypnogram's padding tail is no longer laid out as elapsed time, and a read crossing wake keeps the daytime beats. The Experimental all-day heart rate and HRV holds its daytime arming for the learned night rather than for every screen-off.",
+                "**A Charge that agrees with itself (#2466, #2666, #2469, thanks @andremiliano and @DX23876).** The breakdown reads the headline's own baselines rather than resolving its own, an old WHOOP import no longer anchors them, and there is now a written rule for which nights a Charge baseline reads.",
+                "**A quicker Apple app (#2633, #2634, #2635, #2636, #2637, #2639, #2640, #2641, #2642, thanks @AlexSchmidt1999).** Live Today Effort computes off the main actor, resolved Trends windows are reused across unrelated publications, HealthKit observer deltas are bounded to the recent sync window, shared chart styles resolve once per update, full-resolution chart selection uses a date-ordered lookup, and the shared panel background composites fewer layers.",
+                "**Shortcuts, Health and the Lock Screen (#2340, thanks @rodrigosa7 and @paradix86).** A recorded GPS route comes back through Shortcuts as GPX or FIT, and the picker says what a FIT leaves out. The Apple Health export names its chart heart-rate sources and refreshes write authorization. Android reads your profile weight from Health Connect. Live notifications now have one switch each for what NOOP shows on the Lock Screen, and each switch touches only its own.",
+                "**Smaller corrections.** Android honours your selected accent in Material controls and rejects a malformed custom RGB value (#2627). A strap last seen low that has not been heard from since now says so. Vital dates carry their weekday (#2622, thanks @kavemang). Today explains when Start session is available, and the Sleep movement strip says its scale is per-night. The 4.0 broadcast row, the Key Metrics header and the hypnogram read-out all stopped naming something they were not showing (#2377, #2400, thanks @andremiliano).",
+            ),
+        ),
         Release(
             version = "11.8.0",
             title = uiString(R.string.l10n_app_changelog_a_gym_log_book_on_your_e0f00272),

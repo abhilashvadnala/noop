@@ -144,11 +144,46 @@ class StrapAlarmReconcileTest {
     }
 
     @Test
-    fun nextDailyEpochSec_rollsToTomorrowWhenPassed() {
+    fun companionDailySchedule_rollsToTomorrowWhenPassed() {
         // Companion fires every day; a time already passed today rolls to tomorrow.
         val now = wedAt(9, 0)
-        val slot = nextDailyEpochSec(8 * 60, now, ::utcCalendar)  // 08:00, already passed
+        val slot = buzzReq(true, 8 * 60, now)  // 08:00, already passed
         assertEquals(ms(2026, 6, 18, 8, 0) / 1000, slot)         // Thu 08:00
+    }
+
+    @Test
+    fun dailyScheduleCoversEveryWakeMinuteAndRequiresAStrictlyFutureFire() {
+        val start = 1_781_654_400L // 2026-06-17 00:00 UTC
+        val now = 1_781_699_696L   // 2026-06-17 12:34:56 UTC
+        for (minute in 0 until 1440) {
+            val today = start + minute * 60L
+            val expected = if (today <= now) today + 86_400L else today
+            assertEquals("minute $minute", expected, buzzReq(true, minute, now * 1000))
+            assertEquals(
+                "exact wake minute $minute must roll to tomorrow",
+                today + 86_400L,
+                buzzReq(true, minute, today * 1000),
+            )
+        }
+    }
+
+    // DST epochs are the standalone Swift production scheduler oracle output, pinned on both sides.
+    @Test
+    fun dailySpringRolloverKeepsLocalWakeTimeAcrossTheShortDay() {
+        val factory = { Calendar.getInstance(TimeZone.getTimeZone("America/Chicago")) }
+        val now = 1_772_892_000L // 2026-03-07 08:00 CST
+        val expected = 1772974800L // 2026-03-08 08:00 CDT, 23 hours later
+        assertEquals(expected, nextSmartAlarmEpochSec(8 * 60, emptySet(), now * 1000, factory))
+        assertEquals(23 * 3600L, expected - now)
+    }
+
+    @Test
+    fun dailyAutumnRolloverKeepsLocalWakeTimeAcrossTheLongDay() {
+        val factory = { Calendar.getInstance(TimeZone.getTimeZone("America/Chicago")) }
+        val now = 1_793_451_600L // 2026-10-31 08:00 CDT
+        val expected = 1793541600L // 2026-11-01 08:00 CST, 25 hours later
+        assertEquals(expected, nextSmartAlarmEpochSec(8 * 60, emptySet(), now * 1000, factory))
+        assertEquals(25 * 3600L, expected - now)
     }
 
     /**

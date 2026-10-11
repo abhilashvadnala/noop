@@ -2164,7 +2164,8 @@
     <string name="today_show_all_metrics">显示全部指标（%1$d）</string>
     <string name="today_hr_empty_selected_day">当天没有心率数据。请返回到佩戴手环的日期。</string>
     <string name="today_hr_empty_window">过去 %1$s 内没有心率数据。请尝试更长的时间范围或选择“今天”。</string>
-    <string name="today_hr_calibrating">正在校准。今天尚未保存心率数据，手环传输数据后曲线会逐步显示。</string>
+    <string name="today_hr_none_today">今天尚未保存心率数据。手环传输数据或导入带入数据后，曲线就会绘制。</string>
+    <string name="today_hr_one_block">今天只保存了一个五分钟的心率数据块。绘制曲线需要两个。</string>
     <string name="today_hr_average_last_window">5 分钟平均值 | 过去 %1$s</string>
     <string name="today_hr_zoomed_hint">已放大 · 拖动平移</string>
     <string name="today_not_connected">未连接</string>
@@ -2828,4 +2829,5 @@
     <string name="raw_diag_ecg_probe_stop">停止心电图采集</string>
     <string name="raw_diag_ecg_probe_running">此腕带上可能仍在采集。结论会写入 strap log。</string>
     <string name="today_customize_live_session_availability">在设置中启用Live Sessions 实时记录或有正在进行的训练时，今天会显示此部分。</string>
+    <string name="l10n_app_changelog_today_your_way_heart_rate_any_5e1308b3">自定义「今天」页面、任何应用都能读取的心率，以及意大利语</string>
 </resources>

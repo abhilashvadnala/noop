@@ -1,5 +1,6 @@
 package com.noop.ui
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -1501,17 +1502,22 @@ fun TodayScreen(
         }
         }
 
-        // Today's shared workout host offers Start when idle and the recording controls when active.
-        // Past days retain the active-workout shortcut. Per-second clocks remain inside their leaves.
-        if (selectedDayOffset == 0) {
-            // Keep the existing picker/live-view host mounted across idle → recording transitions.
-            // Manual entry stays on Workouts; Today offers the same live recording controls.
-            item { WorkoutStartSection(viewModel) }
-        } else {
-            activeWorkout?.let { w ->
-                item {
-                    WorkoutInProgressCard(workout = w, onReturn = onOpenActiveWorkout)
-                }
+        // A "workout in progress" indicator whenever a manual workout is active (iOS parity: the Today
+        // ActiveWorkoutIndicator). A tap routes to Live and re-opens the in-exercise overlay. Gated purely on
+        // `activeWorkout`, so it auto-appears/clears with no extra lifecycle wiring. Its per-second clock
+        // ticks inside the card's own LaunchedEffect, never recomposing the Today body.
+        //
+        // STARTING a workout is deliberately not offered here, and that is the whole of #2467's first part
+        // being held back until its other four exist. #2467 asked for Today's Start to come WITH the merge
+        // of recording and heart-rate coaching into one session: one Start/Pause/End pair, one screen, one
+        // saved summary. Only the button was built, so Today ended up carrying both of the entry points the
+        // report opened about, "Start session" for coaching and "Start workout" for recording, which is more
+        // of the confusion it described rather than less. It also drew as a full-width primary slab above the
+        // scores, because the Start-beside-Add row it belongs to collapses to a single weighted child when
+        // Today passes no Add. Starting stays on Workouts, the centre FAB and Live meanwhile.
+        activeWorkout?.let { w ->
+            item {
+                WorkoutInProgressCard(workout = w, onReturn = onOpenActiveWorkout)
             }
         }
 
@@ -6450,6 +6456,35 @@ private fun HrWindowPills(selection: HrWindow, onSelect: (HrWindow) -> Unit) {
     )
 }
 
+/**
+ * Which line the Today HR card shows when it cannot draw a curve, chosen from what the read returned
+ * and from nothing else (#863).
+ *
+ * The card's gate is that the active-strap-plus-imports union came back with under two 5-minute
+ * buckets. It does NOT know whether a strap is calibrating, whether it has offloaded, or whether rows
+ * sit under a source the union cannot reach, which is why no branch here names a cause: the old single
+ * line opened "Calibrating" and asserted "no heart rate banked yet today", and a card naming an
+ * unchecked cause sends a reader looking in the wrong place.
+ *
+ * [dayBucketCount] is the DAY's count, never the windowed subset, because every branch below speaks
+ * about the day: a narrow rolling window that happens to exclude the one stored block must not make the
+ * card claim the day holds nothing. The window branch is the one exception and says so explicitly, and
+ * it only applies while the day itself has a drawable curve to go back to.
+ *
+ * Pure so the selection is pinned without a Compose host. Swift twin: `TodayView.hrEmptyTitle`.
+ */
+@StringRes
+internal fun hrEmptyMessageRes(
+    isToday: Boolean,
+    windowIsWholeDay: Boolean,
+    dayBucketCount: Int,
+): Int = when {
+    !isToday -> R.string.today_hr_empty_selected_day
+    !windowIsWholeDay && dayBucketCount >= 2 -> R.string.today_hr_empty_window
+    dayBucketCount == 1 -> R.string.today_hr_one_block
+    else -> R.string.today_hr_none_today
+}
+
 /** The width of the Today HR card's buckets.
  *
  *  ONE literal, read by the load below and by the gap test in [OverviewHRChart]. They have to agree:
@@ -6578,6 +6613,14 @@ private fun HeartRateTrendCard(
     // #985: the check reads the WINDOWED subset, and the pills stay visible in the empty state, so a
     // too-narrow rolling window (say 1h with no recent offload) is never a dead end — the user widens it
     // or steps back to Today, and the message says which window came up empty.
+    //
+    // The copy states what the READ returned and nothing else. It used to open "Calibrating" and assert
+    // "no heart rate banked yet today", neither of which is checked here: the gate is simply that the
+    // active-strap-plus-imports union came back with under two buckets. Nothing on this branch knows
+    // whether a strap is calibrating, whether it has offloaded, or whether rows are banked somewhere this
+    // union cannot see, and a card that names a cause it has not established sends a reader looking in the
+    // wrong place. One stored block is also not "no heart rate", so it gets its own line rather than being
+    // rounded down to zero.
     if (winBuckets.size < 2) {
         SectionHeader(uiString(R.string.today_section_heart_rate), overline = selectedLabel)
         NoopCard {
@@ -6586,14 +6629,17 @@ private fun HeartRateTrendCard(
                 if (selectedDay == today) {
                     HrWindowPills(hrWindow) { hrWindowOrdinal = it.ordinal }
                 }
+                val emptyRes = hrEmptyMessageRes(
+                    isToday = selectedDay == today,
+                    windowIsWholeDay = hrWindow == HrWindow.TODAY,
+                    dayBucketCount = buckets.size,
+                )
                 Text(
-                    when {
-                        selectedDay != today ->
-                            uiString(R.string.today_hr_empty_selected_day)
-                        hrWindow != HrWindow.TODAY && buckets.size >= 2 ->
-                            uiString(R.string.today_hr_empty_window, uiString(hrWindow.labelRes))
-                        else ->
-                            uiString(R.string.today_hr_calibrating)
+                    // Only the window line takes an argument; the rest are plain.
+                    if (emptyRes == R.string.today_hr_empty_window) {
+                        uiString(emptyRes, uiString(hrWindow.labelRes))
+                    } else {
+                        uiString(emptyRes)
                     },
                     style = NoopType.footnote,
                     color = Palette.textTertiary,

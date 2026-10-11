@@ -3047,7 +3047,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } else null
         // Buzz-WHOOP-4 companion's requested time: the phone alarm's EARLIEST wake time, next occurrence
         // ON A DAY THAT ALARM ACTUALLY FIRES. This routes through the same weekday-aware resolver the
-        // smart alarm uses rather than nextDailyEpochSec, which is unconditionally daily: leaving it daily
+        // smart alarm uses rather than an unconditionally daily schedule: leaving it daily
         // would buzz the strap on a morning the phone alarm is switched off, which is precisely the day the
         // user asked to sleep in. An empty weekday set still means every day.
         //
@@ -3348,32 +3348,6 @@ internal fun nextSmartAlarmEpochSec(
         return cal.timeInMillis / 1000
     }
     return null
-}
-
-/**
- * Next strictly-future occurrence of a daily wake time (today, or tomorrow if already passed), as an
- * epoch-second. Pure + clock-injectable so it can be unit-tested.
- *
- * NO PRODUCTION CALLER as of the phone alarm gaining weekday selection: the "Buzz WHOOP 4/5" companion
- * was its only one, and it now routes through [nextSmartAlarmEpochSec] so a day switched off on the
- * phone alarm cannot leave the strap buzzing on that morning. Kept because it is the reference for what
- * "unconditionally daily" means here — [nextSmartAlarmEpochSec] with an empty weekday set must stay
- * equivalent to it, and its own test is what pins that. Delete it only alongside that equivalence.
- */
-internal fun nextDailyEpochSec(
-    minuteOfDay: Int,
-    nowMs: Long = System.currentTimeMillis(),
-    calendarFactory: () -> java.util.Calendar = { java.util.Calendar.getInstance() },
-): Long {
-    val cal = calendarFactory().apply {
-        timeInMillis = nowMs
-        set(java.util.Calendar.HOUR_OF_DAY, minuteOfDay / 60)
-        set(java.util.Calendar.MINUTE, minuteOfDay % 60)
-        set(java.util.Calendar.SECOND, 0)
-        set(java.util.Calendar.MILLISECOND, 0)
-        if (timeInMillis <= nowMs) add(java.util.Calendar.DAY_OF_YEAR, 1)
-    }
-    return cal.timeInMillis / 1000
 }
 
 /**

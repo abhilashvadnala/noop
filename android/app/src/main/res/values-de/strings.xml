@@ -2257,7 +2257,8 @@
     <string name="today_show_all_metrics">Alle Messwerte anzeigen (%1$d)</string>
     <string name="today_hr_empty_selected_day">Keine Herzfrequenzdaten für diesen Tag. Gehe zu einem Tag zurück, an dem du den Strap getragen hast.</string>
     <string name="today_hr_empty_window">Keine Herzfrequenzdaten in den letzten %1$s. Wähle einen größeren Zeitraum oder „Heute“.</string>
-    <string name="today_hr_calibrating">Kalibrierung läuft. Heute wurden noch keine Herzfrequenzdaten gespeichert. Die Kurve füllt sich, sobald der Strap Daten überträgt.</string>
+    <string name="today_hr_none_today">Für heute sind noch keine Herzfrequenzdaten gespeichert. Die Kurve wird gezeichnet, sobald der Strap überträgt oder ein Import welche mitbringt.</string>
+    <string name="today_hr_one_block">Für heute ist nur ein Fünf-Minuten-Block der Herzfrequenz gespeichert. Für eine Linie braucht die Kurve zwei davon.</string>
     <string name="today_hr_average_last_window">5-Minuten-Durchschnitt | letzte %1$s</string>
     <string name="today_hr_zoomed_hint">Vergrößert · zum Verschieben ziehen</string>
     <string name="today_not_connected">Nicht verbunden</string>
@@ -2871,4 +2872,5 @@
     <string name="raw_diag_ecg_probe_stop">EKG-Aufzeichnung stoppen</string>
     <string name="raw_diag_ecg_probe_running">Auf diesem Strap läuft möglicherweise noch eine Aufzeichnung. Das Ergebnis steht im Strap-Log.</string>
     <string name="today_customize_live_session_availability">Erscheint heute, wenn Live Sessions in den Einstellungen aktiviert sind oder eine Session aktiv ist.</string>
+    <string name="l10n_app_changelog_today_your_way_heart_rate_any_5e1308b3">Today nach Ihren Wünschen, Herzfrequenz für jede App und Italienisch</string>
 </resources>

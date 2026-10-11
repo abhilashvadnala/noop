@@ -57,6 +57,59 @@ class AutoWorkoutDetectorTraceTest {
         assertTrue(lines.any { it.contains("verdict=dropped why=overlapsSavedWorkout") })
     }
 
+    @Test fun savedOverlapEvidenceMatchesSwiftOracleAndPreservesPolicy() {
+        val start = 1_000_000L
+        val end = start + 5400L
+        val hr = block(start, 5401, 120)
+        val cases = listOf(
+            "short" to listOf((start + 600) to (start + 780)),
+            "full" to listOf(start to end),
+            "partialBefore" to listOf((start - 300) to (start + 180)),
+            "partialAfter" to listOf((end - 180) to (end + 300)),
+            "enclosing" to listOf((start - 300) to (end + 300)),
+            "touchStart" to listOf((start - 180) to start),
+            "touchEnd" to listOf(end to (end + 180)),
+            "disjoint" to listOf((start - 180) to (start - 1)),
+            "multiple" to listOf(end to (end + 180), (start + 600) to (start + 780),
+                (start - 300) to (start + 180)),
+        )
+        val actual = ArrayList<String>()
+        for ((name, saved) in cases) {
+            val (results, trace) = AutoWorkoutDetectorTrace.detectTrace(hr, restingHR = 60, savedWorkouts = saved)
+            assertEquals(AutoWorkoutDetector.detect(hr, restingHR = 60, savedWorkouts = saved), results)
+            assertEquals(trace, AutoWorkoutDetectorTrace.detectTrace(
+                hr, restingHR = 60, savedWorkouts = saved.reversed(),
+            ).second)
+            actual += "$name results=${results.size}"
+            actual += trace.filter { it.startsWith("autoDetect savedOverlap ") }
+        }
+        // Verbatim stdout from swiftc -O over the production Swift detector + trace.
+        assertEquals(
+            """
+                short results=0
+                autoDetect savedOverlap candidateSec=5400 savedSec=180 overlapSec=180 savedToCandidate=180/5400
+                full results=0
+                autoDetect savedOverlap candidateSec=5400 savedSec=5400 overlapSec=5400 savedToCandidate=5400/5400
+                partialBefore results=0
+                autoDetect savedOverlap candidateSec=5400 savedSec=480 overlapSec=180 savedToCandidate=480/5400
+                partialAfter results=0
+                autoDetect savedOverlap candidateSec=5400 savedSec=480 overlapSec=180 savedToCandidate=480/5400
+                enclosing results=0
+                autoDetect savedOverlap candidateSec=5400 savedSec=6000 overlapSec=5400 savedToCandidate=6000/5400
+                touchStart results=0
+                autoDetect savedOverlap candidateSec=5400 savedSec=180 overlapSec=0 savedToCandidate=180/5400
+                touchEnd results=0
+                autoDetect savedOverlap candidateSec=5400 savedSec=180 overlapSec=0 savedToCandidate=180/5400
+                disjoint results=1
+                multiple results=0
+                autoDetect savedOverlap candidateSec=5400 savedSec=480 overlapSec=180 savedToCandidate=480/5400
+                autoDetect savedOverlap candidateSec=5400 savedSec=180 overlapSec=180 savedToCandidate=180/5400
+                autoDetect savedOverlap candidateSec=5400 savedSec=180 overlapSec=0 savedToCandidate=180/5400
+            """.trimIndent(),
+            actual.joinToString("\n"),
+        )
+    }
+
     @Test fun traceNamesMotionNotConfirmed() {
         val start = 1_000_000L
         val durS = 20 * 60
