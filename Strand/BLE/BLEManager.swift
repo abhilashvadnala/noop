@@ -2255,12 +2255,33 @@ public final class BLEManager: NSObject, ObservableObject {
     }
 
     /// Stop a realtime IMU producer left armed after a crash, lost stop write, or another client.
+    ///
+    /// A live MG ECG record is EXEMPT (#2846). Type 43 is `REALTIME_RAW_DATA`, which is also the type an
+    /// MG emits during an ECG capture: an R17 record is type 43, revision 17. Nothing else in this guard
+    /// knows a capture exists, so before the exemption the fail-safe fired every 30 s for as long as
+    /// generation ran — 49 unrequested `stopRawData` + `toggleIMUMode` pairs measured in one 25-minute
+    /// session (#891). The recording survived it; the app was still telling the strap to stop a producer
+    /// it had started itself.
+    ///
+    /// The exemption keys on the FRAME, not on probe state, and that is the load-bearing choice. Neither
+    /// flag describes generation's lifetime: `ecgProbeArmed` covers only the listen window while
+    /// generation runs to the strap's own 10-minute limit, so a state-keyed carve-out would go quiet for
+    /// a minute and then resume writing into the rest of the recording. `ecgMayBeRunning` does outlive
+    /// the window, and is the worse choice for the opposite reason: it stays latched until a completed
+    /// stop, so keying on it would disarm the fail-safe for exactly the abandoned sessions it exists to
+    /// recover. Per-frame keeps that recovery intact, because an orphaned IMU producer streaming
+    /// alongside a capture emits frames that do not decode as R17.
+    ///
+    /// `r17FromFrame` is the same predicate `noteEcgProbeCandidate` counts a packet with, so the probe
+    /// and this guard cannot disagree about whether a frame is ECG. It is last in the guard because it is
+    /// the only clause that walks the body: the state and rate-limit checks short-circuit ahead of it.
     private func stopUnexpectedRealtimeImu(_ frame: [UInt8], isOffload: Bool, now: Date = Date()) {
         guard selectedModel.deviceFamily == .whoop5, !isOffload, frame.count > 8,
               frame[8] == 43 || frame[8] == 51,
               !rawCaptureInFlight, !UserDefaults.standard.bool(forKey: "enableRawCapture"),
               now.timeIntervalSince(rawCaptureStoppedAt) >= 3,
-              now.timeIntervalSince(unexpectedImuStopAt) >= 30 else { return }
+              now.timeIntervalSince(unexpectedImuStopAt) >= 30,
+              Whoop5Ecg.r17FromFrame(frame) == nil else { return }
         unexpectedImuStopAt = now
         send(.stopRawData, payload: [0x01], writeType: .withResponse)
         send(.toggleIMUMode, payload: [0x01, 0x00], writeType: .withResponse)
@@ -6876,12 +6897,15 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
                 // Declining must not be silent — see `ClientHelloOutcome.declinedLine`.
                 log(ClientHelloOutcome.declinedLine(charUuid: characteristic.uuid.uuidString, status: nil))
             }
-            if ClientHelloOutcome.isAck(
+            switch ClientHelloOutcome.classify(
                 isHelloChar: isHelloChar,
                 helloOutstanding: helloOutstanding,
                 alreadyBonded: didBond,
+                encryptedBond: state.encryptedBond,
+                samePeripheralAsBond: lastBondedPeripheralUUID == peripheral.identifier,
                 isWhoop5: true
             ) {
+            case .firstBond:
                 didBond = true
                 // #1635: the handshake demonstrably works on this strap - drop the latch so a later
                 // transient failure starts from a clean slate rather than inheriting an old verdict.
@@ -6906,6 +6930,25 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
                 if let elapsed = helloElapsedMs, let timingLine = ClientHelloOutcome.unverifiedBondTimingLine(elapsedMs: elapsed) {
                     log(timingLine)
                 }
+            case .reprove:
+                // #2716's WHOOP 4.0 case on the other family: `didConnect` re-entered a live link with no
+                // disconnect before it (a Bluetooth power cycle) and cleared the flag, and this hello's own
+                // completion is the same proof the first bond recorded. Restore the flag ONLY. `didBond`,
+                // `bondedAt`, the suppression latch and the give-up counters all describe a bond this link
+                // already made, so re-running them would restart the bond-loop stopwatch and the #982
+                // never-bonded detector on a bond that never lapsed. See `ClientHelloOutcome.HelloAck`.
+                state.encryptedBond = true
+                noteGenuineBond(of: peripheral)
+                emitConnectionBondState("encryptedBond family=whoop5 (CLIENT_HELLO acked, re-entered link)")
+                log("WHOOP 5/MG: CLIENT_HELLO acked again on a re-entered link — encrypted bond restored.")
+                // The #1883 timing tell still applies: a re-entered link is no more able to verify the
+                // completion came from the strap than the first one was, and dropping the line here would
+                // leave the one tell Apple has missing from exactly the path that re-grants the bond.
+                if let elapsed = helloElapsedMs, let timingLine = ClientHelloOutcome.unverifiedBondTimingLine(elapsedMs: elapsed) {
+                    log(timingLine)
+                }
+            case .alreadyProven, .notAnAck:
+                break
             }
             for c in whoop5NotifyCharacteristics where !c.isNotifying || restoreNeedsResubscribe {
                 requestNotify(c, on: peripheral, reason: "post-bond puffin")   // #613: force re-arm on restore
@@ -6973,7 +7016,10 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
             return
         }
 
-        if !didBond {
+        switch Whoop4BondAck.classify(didBond: didBond,
+                                      encryptedBond: state.encryptedBond,
+                                      samePeripheralAsBond: lastBondedPeripheralUUID == peripheral.identifier) {
+        case .firstBond:
             didBond = true
             state.bonded = true
             state.encryptedBond = true   // WHOOP 4 confirmed-write bond is always genuine — #69
@@ -6981,6 +7027,15 @@ extension BLEManager: @preconcurrency CBPeripheralDelegate {
             noteGenuineBond(of: peripheral)   // #52: this strap bonds fine; clears any pin-refusal streak
             emitConnectionBondState("encryptedBond family=whoop4 (confirmed write acked)")
             log("BONDED (confirmed write acknowledged) — custom channels should now flow")
+        case .reprove:
+            // didConnect re-entered with no disconnect before it (a Bluetooth power cycle) and cleared the
+            // flag; this ack is the same proof the first bond recorded. See `Whoop4BondAck`.
+            state.encryptedBond = true
+            noteGenuineBond(of: peripheral)
+            emitConnectionBondState("encryptedBond family=whoop4 (confirmed write acked, re-entered link)")
+            log("BONDED again (confirmed write acknowledged on a re-entered link)")
+        case .alreadyProven:
+            break
         }
         // Run the connect handshake EXACTLY ONCE per connection. didWriteValueFor re-fires on EVERY
         // .withResponse write — the bond write, every SEND_HISTORICAL, every HISTORY_END ack. Without
