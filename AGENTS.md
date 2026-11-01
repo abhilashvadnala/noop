@@ -156,6 +156,25 @@ The workflow has no push trigger; a direct non-release commit to `main` needs an
   path (`Strand/BLE`, `Strand/Collect`, Android `com.noop.ble`) must be **validated on a real strap**;
   compile-success proves nothing about connection behavior. Say what you tested on hardware.
 
+### Cursor Cloud
+
+Linux Cloud Agents already have Swift 6.4.2 on `PATH`, JDK 17 as the default `java` (the image also
+ships JDK 21; Android Gradle Plugin 8.5.2 runs on 17), and the Android SDK at `/opt/android-sdk`
+(`platforms;android-35`, build-tools 34.0.0 and 35.0.0). Setup writes gitignored
+`android/local.properties` with `sdk.dir=/opt/android-sdk`.
+
+Snapshot SQLite (amalgamation 3530400, `SQLITE_ENABLE_SNAPSHOT`) is installed where the compiler and
+`ld.gold` find it, so `swift test` in `WhoopStore`, `StrandAnalytics`, and `NoopLocalAccess` needs no
+extra `-Xcc` / `-Xlinker` flags. `StrandDesign` does not build here (SwiftUI). `StrandImport` does not
+compile on this toolchain: `XlsxSheet.swift` uses `XMLParser` without the `import FoundationXML` guard
+that `GpxParser.swift` already has.
+
+The macOS and iOS apps need Xcode. On Linux, exercise `whoop-decode` (`swift build --product
+whoop-decode` in `Packages/WhoopProtocol`), `swift test` for the packages above, `cd android &&
+./gradlew assembleFullDebug testFullDebugUnitTest`, and `python3 -m unittest discover -p 'test_*.py'`
+in `Tools/linux-capture`. Live strap capture needs a BLE radio this VM does not have; the capture unit
+tests are stdlib-only and do not need `bleak`.
+
 ## Hard rules before you touch these areas
 
 - **BLE (read [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) §BLE safety contract first):** never add
